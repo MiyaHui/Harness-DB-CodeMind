@@ -1,0 +1,62 @@
+[project]
+name = "harness-db-codemind"
+version = "0.1.0"
+description = "Enterprise AI Code Intelligence Infrastructure - Codebase Digital Twin System"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.5.0",
+    "neo4j>=5.14.0",
+    "sqlparse>=0.4.4",
+    "networkx>=3.2",
+    "numpy>=1.26.0,<2",
+    "scikit-learn>=1.3.0",
+    "click>=8.1.0",
+    "rich>=13.7.0",
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.25.0",
+    "tree-sitter>=0.20.4",
+    "tree-sitter-java>=0.20.0",
+    "tree-sitter-python>=0.20.4",
+    "sentence-transformers>=2.2.0",
+    "faiss-cpu>=1.7.4",
+    "openai>=1.6.0",
+    "tenacity>=8.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+]
+
+[project.scripts]
+codemind = "codemind.cli:main"
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
