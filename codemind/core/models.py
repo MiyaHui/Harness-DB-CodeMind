@@ -130,6 +130,21 @@ class Graph(BaseModel):
     def estimate_tokens(self) -> int:
         return self.node_count() * 25 + self.edge_count() * 10
 
+    def save(self, path: str) -> None:
+        import json
+        from pathlib import Path
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(self.model_dump(), f, ensure_ascii=False, indent=2)
+
+    @classmethod
+    def load(cls, path: str) -> "Graph":
+        import json
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return cls(**data)
+
 
 class LineageEdge(BaseModel):
     source: str

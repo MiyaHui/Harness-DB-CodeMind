@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any, Optional
 
 from codemind.agents.base import BaseAgent
@@ -28,6 +29,8 @@ from codemind.knowledge.neo4j_store import Neo4jStore
 
 
 class Orchestrator:
+    GRAPH_FILE = "graph.json"
+
     def __init__(self) -> None:
         self._config = get_config()
         self._query_parser = QueryParserAgent()
@@ -42,6 +45,32 @@ class Orchestrator:
         self._graph: Optional[Graph] = None
         self._neo4j = Neo4jStore()
         self._embedding_index = EmbeddingIndex()
+
+        self._graph_path = str(self._config.data_dir / self.GRAPH_FILE)
+        self._try_load_assets()
+
+    def _try_load_assets(self) -> None:
+        if Path(self._graph_path).exists():
+            try:
+                self._graph = Graph.load(self._graph_path)
+            except Exception:
+                self._graph = None
+
+        if self._graph is not None:
+            try:
+                if self._embedding_index.load_index():
+                    pass
+                else:
+                    self._embedding_index.build_index(self._graph.nodes)
+            except Exception:
+                pass
+
+    def _save_assets(self) -> None:
+        if self._graph is not None:
+            try:
+                self._graph.save(self._graph_path)
+            except Exception:
+                pass
 
     def index_repository(self, repo_path: str, language: str = "sql") -> dict[str, Any]:
         start_time = time.time()
@@ -61,6 +90,8 @@ class Orchestrator:
             nodes=[Node(**n) for n in graph_data.get("nodes", [])],
             edges=[Edge(**e) for e in graph_data.get("edges", [])],
         )
+
+        self._save_assets()
 
         try:
             self._embedding_index.build_index(self._graph.nodes)
@@ -85,6 +116,7 @@ class Orchestrator:
             "token_estimate": self._graph.estimate_tokens(),
             "neo4j_stored": neo4j_stored,
             "embedding_indexed": self._graph.node_count(),
+            "graph_saved_to": self._graph_path,
             "elapsed_ms": round(elapsed, 2),
         }
 
@@ -92,6 +124,20 @@ class Orchestrator:
         if isinstance(raw_intent, QueryIntent):
             return raw_intent.value
         return str(raw_intent)
+
+    def _semantic_search_nodes(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
+        return self._embedding_index.search(query, top_k)
+
+    def _neo4j_retrieve(self, node_id: str, max_depth: int = 3) -> Optional[Graph]:
+        try:
+            if self._neo4j.connect():
+                result = self._neo4j.query_neighbors(node_id, max_depth)
+                self._neo4j.close()
+                if result.node_count() > 0:
+                    return result
+        except Exception:
+            pass
+        return None
 
     def query(self, user_query: str, budget: int = 0) -> dict[str, Any]:
         start_time = time.time()
@@ -118,6 +164,19 @@ class Orchestrator:
         intent = self._resolve_intent(parse_output.data.get("intent", "ARCHITECTURE_QA"))
         entities = parse_output.data.get("entities", [])
         constraints = parse_output.data.get("constraints", {})
+
+        semantic_results = self._semantic_search_nodes(user_query, top_k=5)
+        if semantic_results and entities:
+            existing_ids = set()
+            for entity in entities:
+                for node in self._graph.nodes:
+                    if entity.lower() in node.name.lower() or entity.lower() in (node.qualified_name or "").lower():
+                        existing_ids.add(node.id)
+            for node_id, score in semantic_results:
+                if node_id not in existing_ids:
+                    node = self._graph.get_node(node_id)
+                    if node and node.name not in entities:
+                        entities.append(node.name)
 
         budget_input = AgentInput(data={
             "graph_size": self._graph.node_count(),
@@ -241,6 +300,8 @@ class Orchestrator:
             "token_estimate": self._graph.estimate_tokens(),
             "node_types": type_counts,
             "edge_types": edge_type_counts,
+            "graph_path": self._graph_path,
+            "embedding_available": self._embedding_index._embeddings is not None,
         }
 
     def _get_sql_for_entity(self, entity: str) -> str:
